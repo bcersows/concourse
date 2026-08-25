@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +33,22 @@ const teamName = "testflight"
 const adminTeamName = "main"
 const guestTeamName = "testflight-guest"
 
-var flyTarget string
+var (
+	flyTarget   string
+	flyTargetMu sync.RWMutex
+)
+
+func getFlyTarget() string {
+	flyTargetMu.RLock()
+	defer flyTargetMu.RUnlock()
+	return flyTarget
+}
+
+func setFlyTarget(target string) {
+	flyTargetMu.Lock()
+	defer flyTargetMu.Unlock()
+	flyTarget = target
+}
 
 type suiteConfig struct {
 	FlyBin           string `json:"fly"`
@@ -60,6 +76,12 @@ var (
 
 func TestTestflight(t *testing.T) {
 	RegisterFailHandler(Fail)
+
+	SetDefaultEventuallyTimeout(5 * time.Minute)
+	SetDefaultEventuallyPollingInterval(time.Second)
+	SetDefaultConsistentlyDuration(time.Minute)
+	SetDefaultConsistentlyPollingInterval(time.Second)
+
 	RunSpecs(t, "TestFlight Suite")
 }
 
@@ -145,16 +167,11 @@ var _ = SynchronizedAfterSuite(func() {
 const DefaultSpecTimeout = SpecTimeout(6 * time.Minute)
 
 var _ = BeforeEach(func() {
-	SetDefaultEventuallyTimeout(5 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second)
-	SetDefaultConsistentlyDuration(time.Minute)
-	SetDefaultConsistentlyPollingInterval(time.Second)
-
 	var err error
 	tmp, err = os.MkdirTemp("", "testflight-tmp")
 	Expect(err).ToNot(HaveOccurred())
 
-	flyTarget = testflightFlyTarget
+	setFlyTarget(testflightFlyTarget)
 
 	pipelineName = randomPipelineName()
 })
@@ -237,19 +254,19 @@ func flyLogin(target, team, username, password string) *gexec.Session {
 
 func spawnFly(argv ...string) *gexec.Session {
 	GinkgoHelper()
-	return spawn(config.FlyBin, append([]string{"-t", flyTarget}, argv...)...)
+	return spawn(config.FlyBin, append([]string{"-t", getFlyTarget()}, argv...)...)
 }
 
 func spawnFlyIn(dir string, argv ...string) *gexec.Session {
 	GinkgoHelper()
-	return spawnIn(dir, config.FlyBin, append([]string{"-t", flyTarget}, argv...)...)
+	return spawnIn(dir, config.FlyBin, append([]string{"-t", getFlyTarget()}, argv...)...)
 }
 
 func spawnFlyOpts(opts ...spawnOpt) func(argv ...string) *gexec.Session {
 	GinkgoHelper()
 	spawnFn := spawnOpts(opts...)
 	return func(argv ...string) *gexec.Session {
-		return spawnFn(config.FlyBin, append([]string{"-t", flyTarget}, argv...)...)
+		return spawnFn(config.FlyBin, append([]string{"-t", getFlyTarget()}, argv...)...)
 	}
 }
 
@@ -401,10 +418,10 @@ func waitForBuildAndWatch(jobName string, buildName ...string) *gexec.Session {
 
 func withFlyTarget(target string, f func()) {
 	GinkgoHelper()
-	before := flyTarget
-	flyTarget = target
+	before := getFlyTarget()
+	setFlyTarget(target)
 	f()
-	flyTarget = before
+	setFlyTarget(before)
 }
 
 // Returns true if only cgroups V2 is enabled and cgroups V1 is disabled
