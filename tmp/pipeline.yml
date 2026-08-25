@@ -1,0 +1,29 @@
+jobs:
+  - name: hello-world-((branch))
+    plan:
+      - config:
+          image_resource:
+            name: ""
+            source:
+              repository: alpine
+              tag: latest
+            type: registry-image
+          platform: linux
+          run:
+            args:
+              - Hello from instance ((branch))!
+            path: echo
+        task: say-hello
+      - config:
+          image_resource:
+            name: ""
+            source:
+              repository: alpine
+              tag: latest
+            type: registry-image
+          platform: linux
+          run:
+            args:
+              - 'This is pipeline version: ((branch))'
+            path: echo
+        task: show-version
